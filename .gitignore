@@ -1,0 +1,19 @@
+# 运行时生成的文件
+logs/
+results/
+*.log
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# IDE 文件
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# 临时文件
+*.tmp
+*.temp

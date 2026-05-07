@@ -22,6 +22,9 @@ const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// ============ 命令行参数（模块级，供 scrape() 读取） ============
+const args = process.argv.slice(2);
+
 // ============ 配置 ============
 const CDP_PORT = 9222;
 const TARGET_URL = 'https://www.seedhub.cc/categories/1/movies/';
@@ -249,7 +252,6 @@ async function main() {
   }
 
   // 判断运行模式
-  const args = process.argv.slice(2);
   const loopMode = args.includes('--loop') || INTERVAL_HOURS > 0;
 
   if (loopMode) {

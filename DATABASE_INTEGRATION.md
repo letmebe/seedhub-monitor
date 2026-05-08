@@ -81,7 +81,41 @@ node workflow.js --status
 自动转存待处理的电影：
 
 ```bash
-node workflow.js --run
+# 转存所有待处理电影(默认最多10部)
+node auto-transfer.js
+
+# 限制转存数量
+node auto-transfer.js --limit 5
+
+# 仅查看待转存列表(不执行)
+node auto-transfer.js --dry-run
+
+# 或使用npm脚本
+npm run transfer
+```
+
+输出示例：
+```
+============================================================
+SeedHub 自动转存
+============================================================
+
+📊 数据库状态:
+   总记录: 156
+   已转存: 23
+   待转存: 133
+
+📋 待转存列表 (10/133):
+   1. 飞驰人生3 (百度)
+   2. 巅峰猎杀 Apex (百度)
+   ...
+
+🚀 开始转存...
+
+[1/10] 飞驰人生3
+  网盘类型: 百度
+  分享链接: https://pan.baidu.com/s/1xxx
+  ✅ 转存成功
 ```
 
 ### 5. 数据库操作API
@@ -157,8 +191,8 @@ db.closeDatabase();
 
 ## 下一步计划
 
-- [ ] 修改scrape.js使用数据库存储
-- [ ] 修改baidu_transfer.js更新转存状态
+- [x] 修改scrape.js使用数据库存储
+- [x] 创建auto-transfer.js实现自动转存
 - [ ] 添加定时自动转存任务
 - [ ] 添加Web界面查看数据
 

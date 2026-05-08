@@ -636,18 +636,77 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
   if (needCode) {
     if (!extractCode) { console.error('  ❌ 需要提取码但未提供'); return { success: false, error: '需要提取码' }; }
     console.log(`  输入提取码: ${extractCode}`);
-    setInputValue('input[placeholder*="提取码"], input[placeholder*="访问码"]', extractCode);
-    await delay(500);
-    clickByText(['提取文件', '确定', '确认', '进入'], ['button', 'a']);
-    await delay(3000);
+    
+    const inputSelector = 'input[placeholder*="提取码"], input[placeholder*="访问码"]';
+    
+    setInputValue(inputSelector, extractCode);
+    await delay(1000);
+    
+    console.log('  查找提取按钮...');
+    const buttonTexts = cdpEval(`Array.from(document.querySelectorAll('button, a, span, div')).map(el => ({text: el.textContent.trim().substring(0, 20), tag: el.tagName})).filter(o => o.text.length > 0 && o.text.length < 20).slice(0, 15)`);
+    console.log('  页面元素:', buttonTexts);
+    
+    const clickResult = cdpEval(`
+      (function() {
+        var elements = Array.from(document.querySelectorAll('div, span, button, a'));
+        var extractBtn = null;
+        
+        for (var i = 0; i < elements.length; i++) {
+          var el = elements[i];
+          var text = el.textContent.trim();
+          
+          if (text === '提取文件') {
+            var hasOnlyText = el.childNodes.length === 0 || 
+                             (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3);
+            
+            if (hasOnlyText || el.tagName === 'BUTTON' || el.tagName === 'A') {
+              extractBtn = el;
+              break;
+            }
+            
+            if (!extractBtn) {
+              extractBtn = el;
+            }
+          }
+        }
+        
+        if (extractBtn) {
+          extractBtn.click();
+          return { success: true, text: '提取文件', tag: extractBtn.tagName, method: 'exact-match' };
+        }
+        
+        return { success: false, reason: 'no-extract-button' };
+      })()
+    `);
+    console.log('  提取按钮点击结果:', clickResult);
+    
+    if (!clickResult || !clickResult.success) {
+      console.log('  精确匹配失败，尝试模糊匹配...');
+      const clicked = clickByText(['提取文件', '确定', '确认', '进入', '提取'], ['button', 'a', 'span', 'div']);
+      console.log('  模糊匹配结果:', clicked);
+    }
+    
+    await delay(4000);
+    
     console.log('  ✅ 提取码已提交');
     console.log('  ⏳ 等待文件列表加载...');
-    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小'], 15000);
-    if (!listLoaded) { console.error('  ❌ 文件列表加载超时'); return { success: false, error: '文件列表加载失败' }; }
-    console.log(`  ✅ 文件列表已加载`);
+    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 30000);
+    if (!listLoaded) { 
+      console.error('  ❌ 文件列表加载超时');
+      const pageText = cdpEval('document.body ? document.body.innerText.substring(0, 300) : ""');
+      console.log('  当前页面文本:', pageText);
+      const currentUrl = cdpEval('window.location.href');
+      console.log('  当前URL:', currentUrl);
+      return { success: false, error: '文件列表加载失败' }; 
+    }
+    console.log(`  ✅ 文件列表已加载，检测到: ${listLoaded}`);
   } else {
     console.log('  跳过（无需提取码）');
     await delay(3000);
+    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 10000);
+    if (!listLoaded) {
+      console.log('  ⚠️  文件列表未检测到，继续执行');
+    }
   }
 
   // 检查链接有效性

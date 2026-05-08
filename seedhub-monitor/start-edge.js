@@ -4,15 +4,15 @@
  */
 const { spawn } = require('child_process');
 const net = require('net');
+const path = require('path');
 
 const EDGE_PATH = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
+const USER_DATA_DIR = path.join(__dirname, 'edge-debug-profile');
 
 function startEdge() {
-  // 先杀掉已有的 Edge 进程
-  try { require('child_process').execSync('taskkill /F /IM msedge.exe', { stdio: 'ignore' }); } catch {}
-  
   const edge = spawn(EDGE_PATH, [
     '--remote-debugging-port=9222',
+    '--user-data-dir=' + USER_DATA_DIR,
     '--no-first-run',
     '--no-default-browser-check'
   ], {

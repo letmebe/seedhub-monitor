@@ -6,6 +6,9 @@ results/
 # 数据库文件
 *.db
 
+# Edge调试模式用户数据
+edge-debug-profile/
+
 # 系统文件
 .DS_Store
 Thumbs.db

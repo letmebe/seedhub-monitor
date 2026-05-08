@@ -613,13 +613,21 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
   // 验证 URL
   const currentUrl = cdpEval('window.location.href');
   console.log(`  当前页面 URL: ${currentUrl || '(无法获取)'}`);
-  if (!currentUrl || !currentUrl.includes(shareId)) {
-    console.error('  ❌ 页面未正确导航到目标分享链接！');
-    console.error(`    期望 share ID: ${shareId}`);
-    console.error(`    实际 URL: ${currentUrl || 'null'}`);
-    return { success: false, error: `页面导航失败，当前URL: ${currentUrl || 'unknown'}` };
+  
+  if (currentUrl) {
+    const shareIdWithoutPrefix = shareId.replace(/^1/, '');
+    const isValid = currentUrl.includes(shareId) || currentUrl.includes(shareIdWithoutPrefix);
+    
+    if (!isValid) {
+      console.error('  ❌ 页面未正确导航到目标分享链接！');
+      console.error(`    期望 share ID: ${shareId}`);
+      console.error(`    实际 URL: ${currentUrl}`);
+      return { success: false, error: `页面导航失败，当前URL: ${currentUrl}` };
+    }
+    console.log('  ✅ 页面已正确加载，share ID 匹配');
+  } else {
+    console.log('  ⚠️  无法获取当前URL，继续执行');
   }
-  console.log('  ✅ 页面已正确加载，share ID 匹配');
 
   // Step 2: 处理提取码
   console.log('\n[2/5] 🔑 检查提取码...');

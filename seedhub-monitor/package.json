@@ -5,9 +5,10 @@
   "main": "scrape.js",
   "scripts": {
     "start": "node scrape.js",
-    "transfer": "node baidu_transfer.js",
+    "transfer": "node auto-transfer.js",
     "migrate": "node migrate-json-to-db.js",
-    "test": "node test_transfer_fixed.js"
+    "test": "node test_transfer_fixed.js",
+    "status": "node workflow.js --status"
   },
   "keywords": [
     "seedhub",

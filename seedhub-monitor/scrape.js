@@ -21,6 +21,7 @@
 const { execSync, spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
+const db = require('./db');
 
 // ============ 命令行参数（模块级，供 scrape() 读取） ============
 const args = process.argv.slice(2);
@@ -218,13 +219,28 @@ async function scrape() {
 
   // Step 4: 保存结果
   console.log('💾 保存结果...');
+  
+  // 保存到JSON（保持向后兼容）
   const outDir = path.join(__dirname, 'results');
   if (!fs.existsSync(outDir)) fs.mkdirSync(outDir, { recursive: true });
   const outFile = path.join(outDir, timestamp.split('T')[0] + '.json');
   fs.writeFileSync(outFile, JSON.stringify(results, null, 2), 'utf-8');
+  console.log(`  JSON: ${outFile}`);
+  
+  // 保存到数据库
+  const validMovies = results.movies.filter(m => m.panLink && m.panType);
+  if (validMovies.length > 0) {
+    await db.initDatabase();
+    const inserted = db.insertMovies(validMovies);
+    console.log(`  数据库: 新增 ${inserted}/${validMovies.length} 条`);
+    
+    const stats = db.getStats();
+    console.log(`  数据库统计: 总${stats.total}, 待转存${stats.pending_count}`);
+    db.closeDatabase();
+  }
 
-  console.log(`\n✅ 完成！结果: ${outFile}`);
-  console.log(`   共处理 ${results.movies.length} 部\n`);
+  console.log(`\n✅ 完成！`);
+  console.log(`   共处理 ${results.movies.length} 部，有效 ${validMovies.length} 部\n`);
 
   console.log('📊 摘要:');
   results.movies.forEach(m => {

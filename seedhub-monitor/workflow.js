@@ -107,8 +107,8 @@ async function connectToBrowser() {
   }
 }
 
-function showStatus() {
-  db.initDatabase();
+async function showStatus() {
+  await db.initDatabase();
   
   const stats = db.getStats();
   console.log('\n数据库状态:');

@@ -38,15 +38,16 @@ async function sleep(ms) {
 }
 
 async function connectToBrowser() {
+  const { execSync } = require('child_process');
+  
   try {
-    const { connect } = require('agent-browser');
-    const browser = await connect(CDP_PORT);
-    console.log('✅ 已连接到浏览器');
-    return browser;
-  } catch (error) {
-    console.error('❌ 连接浏览器失败:', error.message);
-    console.log('💡 请确保浏览器已在调试模式运行: node start-edge.js');
-    return null;
+    execSync('netstat -ano | findstr ":9222"', { encoding: 'utf-8' });
+    console.log('✅ 浏览器已在调试模式运行');
+    return true;
+  } catch {
+    console.error('❌ 浏览器未在调试模式运行');
+    console.log('💡 请先启动浏览器: node start-edge.js');
+    return false;
   }
 }
 

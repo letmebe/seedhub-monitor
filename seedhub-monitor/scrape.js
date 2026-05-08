@@ -227,12 +227,25 @@ async function scrape() {
   fs.writeFileSync(outFile, JSON.stringify(results, null, 2), 'utf-8');
   console.log(`  JSON: ${outFile}`);
   
-  // 保存到数据库
+  // 保存到数据库（增量更新）
   const validMovies = results.movies.filter(m => m.panLink && m.panType);
   if (validMovies.length > 0) {
     await db.initDatabase();
-    const inserted = db.insertMovies(validMovies);
-    console.log(`  数据库: 新增 ${inserted}/${validMovies.length} 条`);
+    const upsertResults = db.upsertMovies(validMovies);
+    
+    console.log(`  数据库:`);
+    console.log(`    新增: ${upsertResults.inserted} 条`);
+    console.log(`    更新: ${upsertResults.updated} 条`);
+    console.log(`    跳过: ${upsertResults.skipped} 条`);
+    
+    if (upsertResults.updated > 0) {
+      console.log(`  链接更新详情:`);
+      upsertResults.details
+        .filter(d => d.action === 'updated')
+        .forEach(d => {
+          console.log(`    ${d.title}: 链接已更新`);
+        });
+    }
     
     const stats = db.getStats();
     console.log(`  数据库统计: 总${stats.total}, 待转存${stats.pending_count}`);

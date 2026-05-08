@@ -5,7 +5,8 @@
   "main": "scrape.js",
   "scripts": {
     "start": "node scrape.js",
-    "transfer": "node auto-transfer.js",
+    "transfer": "node select-transfer.js",
+    "auto-transfer": "node auto-transfer.js",
     "migrate": "node migrate-json-to-db.js",
     "test": "node test_transfer_fixed.js",
     "status": "node workflow.js --status"

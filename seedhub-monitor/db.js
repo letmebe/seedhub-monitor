@@ -40,6 +40,7 @@ async function initDatabase() {
   db.run(`CREATE INDEX IF NOT EXISTS idx_transferred ON movies(transferred)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_pan_type ON movies(pan_type)`);
   db.run(`CREATE INDEX IF NOT EXISTS idx_created_at ON movies(created_at)`);
+  db.run(`CREATE INDEX IF NOT EXISTS idx_title ON movies(title)`);
   
   saveDatabase();
   
@@ -94,6 +95,82 @@ function insertMovies(movies) {
     }
   }
   return count;
+}
+
+function upsertMovie(movie) {
+  const stmt = db.prepare(`
+    SELECT id, pan_link, transferred FROM movies 
+    WHERE title = ? AND pan_type = ?
+  `);
+  
+  stmt.bind([movie.title, movie.panType]);
+  
+  let existing = null;
+  if (stmt.step()) {
+    existing = stmt.getAsObject();
+  }
+  stmt.free();
+  
+  if (!existing) {
+    const insertStmt = db.prepare(`
+      INSERT INTO movies (title, url, pan_type, pan_link, extract_code)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    
+    insertStmt.run([
+      movie.title,
+      movie.url,
+      movie.panType,
+      movie.panLink,
+      movie.extractCode
+    ]);
+    insertStmt.free();
+    
+    saveDatabase();
+    return { action: 'inserted', reason: '新电影' };
+  }
+  
+  if (existing.transferred === 1) {
+    return { action: 'skipped', reason: '已转存' };
+  }
+  
+  if (existing.pan_link === movie.panLink) {
+    return { action: 'skipped', reason: '链接相同' };
+  }
+  
+  const now = new Date().toISOString();
+  db.run(`
+    UPDATE movies 
+    SET pan_link = ?, extract_code = ?, url = ?, updated_at = ?
+    WHERE id = ?
+  `, [movie.panLink, movie.extractCode, movie.url, now, existing.id]);
+  
+  saveDatabase();
+  return { action: 'updated', reason: '链接更新', oldLink: existing.pan_link };
+}
+
+function upsertMovies(movies) {
+  const results = {
+    inserted: 0,
+    updated: 0,
+    skipped: 0,
+    details: []
+  };
+  
+  for (const movie of movies) {
+    const result = upsertMovie(movie);
+    
+    if (result.action === 'inserted') results.inserted++;
+    else if (result.action === 'updated') results.updated++;
+    else results.skipped++;
+    
+    results.details.push({
+      title: movie.title,
+      ...result
+    });
+  }
+  
+  return results;
 }
 
 function getUntransferred(limit = 100) {
@@ -205,6 +282,8 @@ module.exports = {
   closeDatabase,
   insertMovie,
   insertMovies,
+  upsertMovie,
+  upsertMovies,
   getUntransferred,
   markTransferred,
   getStats,

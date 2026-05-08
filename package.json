@@ -8,8 +8,8 @@
     "transfer": "node select-transfer.js",
     "auto-transfer": "node auto-transfer.js",
     "migrate": "node migrate-json-to-db.js",
-    "test": "node test_transfer_fixed.js",
-    "status": "node workflow.js --status"
+    "status": "node status.js",
+    "test": "node test_transfer_fixed.js"
   },
   "keywords": [
     "seedhub",

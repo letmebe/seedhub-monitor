@@ -30,7 +30,7 @@ const args = process.argv.slice(2);
 const CDP_PORT = 9222;
 const TARGET_URL = 'https://www.seedhub.cc/categories/1/movies/';
 const TARGET_PAN = '百度';  // 百度 / UC / 夸克 / 天翼 / 全部
-const INTERVAL_HOURS = 24;  // 抓取间隔（小时），0 = 只运行一次
+const INTERVAL_HOURS = 0;  // 抓取间隔（小时），0 = 只运行一次
 const MAX_CHECK = 10;  // 每个电影最多检查几个中转链接
 const MAX_MOVIES = 20;  // 每次最多处理几部电影
 

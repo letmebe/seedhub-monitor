@@ -214,8 +214,8 @@ function getStats() {
   const stmt = db.prepare(`
     SELECT 
       COUNT(*) as total,
-      SUM(CASE WHEN transferred = 1 THEN 1 ELSE 0 END) as transferred_count,
-      SUM(CASE WHEN transferred = 0 THEN 1 ELSE 0 END) as pending_count
+      COALESCE(SUM(CASE WHEN transferred = 1 THEN 1 ELSE 0 END), 0) as transferred_count,
+      COALESCE(SUM(CASE WHEN transferred = 0 THEN 1 ELSE 0 END), 0) as pending_count
     FROM movies
   `);
   

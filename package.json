@@ -1,8 +1,12 @@
 {
   "name": "seedhub-monitor",
   "version": "1.0.0",
-  "description": "SeedHub影视资源监控和百度网盘自动转存工具",
+  "description": "SeedHub影视资源自动抓取和百度网盘转存工具",
   "main": "scrape.js",
+  "bin": {
+    "seedhub-scrape": "./scrape.js",
+    "seedhub-transfer": "./select-transfer.js"
+  },
   "scripts": {
     "start": "node scrape.js",
     "transfer": "node select-transfer.js",
@@ -15,11 +19,27 @@
     "seedhub",
     "baidu-pan",
     "automation",
-    "scraper"
+    "scraper",
+    "movie-monitor"
   ],
   "author": "",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": ""
+  },
+  "bugs": {
+    "url": ""
+  },
+  "homepage": "",
+  "engines": {
+    "node": ">=14.0.0"
+  },
   "dependencies": {
     "sql.js": "^1.10.2"
+  },
+  "devDependencies": {},
+  "peerDependencies": {
+    "agent-browser": ">=1.0.0"
   }
 }

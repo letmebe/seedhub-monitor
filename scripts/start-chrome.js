@@ -13,8 +13,8 @@ const fs = require('fs');
 const path = require('path');
 const net = require('net');
 
-const CHROME_DIR = path.join(__dirname, 'chrome');
-const USER_DATA_DIR = path.join(__dirname, 'chrome-profile');
+const CHROME_DIR = path.join(__dirname, '..', 'chrome');
+const USER_DATA_DIR = path.join(__dirname, '..', 'chrome-profile');
 const CDP_PORT = 9222;
 const PLATFORM = process.platform;
 

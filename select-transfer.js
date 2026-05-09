@@ -15,10 +15,8 @@
 
 const db = require('./db');
 const { transferBaiduShare } = require('./baidu_transfer');
+const utils = require('./utils');
 const readline = require('readline');
-
-const CDP_PORT = 9222;
-const DEFAULT_TARGET_PATH = '/视听娱乐/SeedHub';
 
 const args = process.argv.slice(2);
 
@@ -31,24 +29,6 @@ function question(prompt) {
   return new Promise((resolve) => {
     rl.question(prompt, resolve);
   });
-}
-
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function connectToBrowser() {
-  const { execSync } = require('child_process');
-  
-  try {
-    execSync('netstat -ano | findstr ":9222"', { encoding: 'utf-8' });
-    console.log('✅ 浏览器已在调试模式运行');
-    return true;
-  } catch {
-    console.error('❌ 浏览器未在调试模式运行');
-    console.log('💡 请先启动浏览器: node start-edge.js');
-    return false;
-  }
 }
 
 async function showMovieList(movies) {
@@ -95,7 +75,7 @@ async function selectTransfer(options = {}) {
   
   if (options.all) {
     console.log('\n🔄 --all 模式: 转存所有待转存电影');
-    await executeTransfer(allMovies, DEFAULT_TARGET_PATH);
+    await executeTransfer(allMovies, utils.DEFAULT_TARGET_PATH);
     db.closeDatabase();
     rl.close();
     return;
@@ -110,7 +90,7 @@ async function selectTransfer(options = {}) {
       return;
     }
     console.log(`\n🔄 指定ID模式: 转存 ${selectedMovies.length} 部电影`);
-    await executeTransfer(selectedMovies, DEFAULT_TARGET_PATH);
+    await executeTransfer(selectedMovies, utils.DEFAULT_TARGET_PATH);
     db.closeDatabase();
     rl.close();
     return;
@@ -157,17 +137,21 @@ async function selectTransfer(options = {}) {
     return;
   }
   
-  await executeTransfer(selectedMovies, DEFAULT_TARGET_PATH);
+  await executeTransfer(selectedMovies, utils.DEFAULT_TARGET_PATH);
   
   db.closeDatabase();
   rl.close();
 }
 
 async function executeTransfer(movies, targetPath) {
-  const browser = await connectToBrowser();
-  if (!browser) {
+  const browserRunning = utils.isBrowserRunning();
+  if (!browserRunning) {
+    console.error('❌ 浏览器未在调试模式运行');
+    console.log('💡 请先启动浏览器: node scripts/start-chrome.js');
     return;
   }
+  
+  console.log('✅ 浏览器已在调试模式运行');
   
   console.log(`\n🚀 开始转存...\n`);
   
@@ -202,7 +186,7 @@ async function executeTransfer(movies, targetPath) {
         failCount++;
       }
       
-      await sleep(2000);
+      await utils.sleep(2000);
       
     } catch (error) {
       console.error('  ❌ 转存异常:', error.message);

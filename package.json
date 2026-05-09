@@ -10,10 +10,11 @@
   "scripts": {
     "start": "node scrape.js",
     "transfer": "node select-transfer.js",
-    "auto-transfer": "node auto-transfer.js",
-    "migrate": "node migrate-json-to-db.js",
-    "status": "node status.js",
-    "test": "node test_transfer_fixed.js",
+    "auto-transfer": "node scripts/auto-transfer.js",
+    "migrate": "node scripts/migrate-json-to-db.js",
+    "status": "node scripts/status.js",
+    "start-chrome": "node scripts/start-chrome.js",
+    "start-edge": "node scripts/start-edge.js",
     "download-chrome": "node scripts/download-chrome.js",
     "check-chrome": "node scripts/check-chrome.js"
   },

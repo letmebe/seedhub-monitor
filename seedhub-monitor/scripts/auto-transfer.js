@@ -13,36 +13,18 @@
  *   node auto-transfer.js --dry-run   # 仅查看待转存列表，不执行
  */
 
-const db = require('./db');
-const { transferBaiduShare } = require('./baidu_transfer');
-const { connect } = require('agent-browser');
+const db = require('../db');
+const { transferBaiduShare } = require('../baidu_transfer');
+const utils = require('../utils');
 
-const CDP_PORT = 9222;
-const DEFAULT_TARGET_PATH = '/视听娱乐/SeedHub';
 const DEFAULT_LIMIT = 10;
 
 const args = process.argv.slice(2);
 
-async function sleep(ms) {
-  return new Promise(resolve => setTimeout(resolve, ms));
-}
-
-async function connectToBrowser() {
-  try {
-    const browser = await connect(CDP_PORT);
-    console.log('✅ 已连接到浏览器');
-    return browser;
-  } catch (error) {
-    console.error('❌ 连接浏览器失败:', error.message);
-    console.log('💡 请确保浏览器已在调试模式运行: node start-edge.js');
-    return null;
-  }
-}
-
 async function autoTransfer(options = {}) {
   const limit = options.limit || DEFAULT_LIMIT;
   const dryRun = options.dryRun || false;
-  const targetPath = options.targetPath || DEFAULT_TARGET_PATH;
+  const targetPath = options.targetPath || utils.DEFAULT_TARGET_PATH;
   
   console.log('='.repeat(60));
   console.log('SeedHub 自动转存');
@@ -75,7 +57,7 @@ async function autoTransfer(options = {}) {
     return;
   }
   
-  const browser = await connectToBrowser();
+  const browser = await utils.connectToBrowser();
   if (!browser) {
     db.closeDatabase();
     return;
@@ -114,7 +96,7 @@ async function autoTransfer(options = {}) {
         failCount++;
       }
       
-      await sleep(2000);
+      await utils.sleep(2000);
       
     } catch (error) {
       console.error('  ❌ 转存异常:', error.message);
@@ -140,7 +122,7 @@ function showHelp() {
   console.log('  node auto-transfer.js --dry-run    仅查看待转存列表');
   console.log('  node auto-transfer.js --help       显示帮助');
   console.log('\n配置:');
-  console.log(`  目标路径: ${DEFAULT_TARGET_PATH}`);
+  console.log(`  目标路径: ${utils.DEFAULT_TARGET_PATH}`);
   console.log(`  默认限制: ${DEFAULT_LIMIT} 部`);
 }
 
@@ -153,7 +135,7 @@ async function main() {
   const options = {
     dryRun: args.includes('--dry-run'),
     limit: DEFAULT_LIMIT,
-    targetPath: DEFAULT_TARGET_PATH
+    targetPath: utils.DEFAULT_TARGET_PATH
   };
   
   if (args.includes('--limit')) {
@@ -163,7 +145,7 @@ async function main() {
   
   if (args.includes('--path')) {
     const pathIndex = args.indexOf('--path');
-    options.targetPath = args[pathIndex + 1] || DEFAULT_TARGET_PATH;
+    options.targetPath = args[pathIndex + 1] || utils.DEFAULT_TARGET_PATH;
   }
   
   await autoTransfer(options);

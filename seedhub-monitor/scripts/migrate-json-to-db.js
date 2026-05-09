@@ -1,8 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const db = require('./db');
+const db = require('../db');
 
-const RESULTS_DIR = path.join(__dirname, 'results');
+const RESULTS_DIR = path.join(__dirname, '..', 'results');
 
 function migrateFromJson(jsonPath) {
   console.log('\n开始迁移:', jsonPath);

@@ -7,7 +7,7 @@ const net = require('net');
 const path = require('path');
 
 const EDGE_PATH = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
-const USER_DATA_DIR = path.join(__dirname, 'edge-debug-profile');
+const USER_DATA_DIR = path.join(__dirname, '..', 'edge-debug-profile');
 const CDP_PORT = 9222;
 
 function killProcessOnPort(port) {

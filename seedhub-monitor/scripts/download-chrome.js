@@ -36,6 +36,8 @@ function getPlatformInfo() {
 }
 
 async function fetchJSON(url) {
+  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+  
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
     
@@ -63,43 +65,38 @@ async function fetchJSON(url) {
   });
 }
 
+function getPlatformPattern() {
+  if (PLATFORM === 'win32') {
+    return ARCH === 'x64' ? 'win64' : 'win32';
+  } else if (PLATFORM === 'darwin') {
+    return ARCH === 'arm64' ? 'mac-arm64' : 'mac-x64';
+  } else {
+    return 'linux64';
+  }
+}
+
 async function getLatestVersion() {
-  console.log('获取最新版本信息...');
+  console.log('准备下载便携版Chromium...');
   
-  const url = 'https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json';
-  const data = await fetchJSON(url);
+  const platformPattern = getPlatformPattern();
+  console.log(`平台: ${platformPattern} (arch: ${ARCH})`);
   
-  console.log(`找到 ${data.versions.length} 个版本`);
+  // 使用已知稳定版本
+  const knownVersions = {
+    'win64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/win64/chrome-win64.zip' },
+    'win32': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/win32/chrome-win32.zip' },
+    'mac-x64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/mac-x64/chrome-mac-x64.zip' },
+    'mac-arm64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/mac-arm64/chrome-mac-arm64.zip' },
+    'linux64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/linux64/chrome-linux64.zip' }
+  };
   
-  const { platform, arch } = getPlatformInfo();
-  
-  // 构建匹配的平台字符串
-  const platformPattern = PLATFORM === 'win32' ? 'win' : 
-                          PLATFORM === 'darwin' ? 'mac' : 'linux';
-  
-  console.log(`查找平台: ${platformPattern}`);
-  
-  // 查找最新稳定版本
-  for (let i = data.versions.length - 1; i >= 0; i--) {
-    const version = data.versions[i];
-    const downloads = version.downloads?.chrome;
-    
-    if (downloads) {
-      const download = downloads.find(d => 
-        d.platform.includes(platformPattern)
-      );
-      
-      if (download) {
-        console.log(`匹配成功: 版本 ${version.version}, 平台 ${download.platform}`);
-        return {
-          version: version.version,
-          url: download.url
-        };
-      }
-    }
+  const versionInfo = knownVersions[platformPattern];
+  if (!versionInfo) {
+    throw new Error(`不支持的平台: ${platformPattern}`);
   }
   
-  throw new Error(`未找到平台 ${platformPattern} 的下载版本`);
+  console.log(`版本: ${versionInfo.version}`);
+  return { ...versionInfo, platformPattern };
 }
 
 function downloadFile(url, dest) {
@@ -181,7 +178,7 @@ async function downloadChrome() {
   }
   
   // 获取版本信息
-  const { version, url } = await getLatestVersion();
+  const { version, url, platformPattern } = await getLatestVersion();
   console.log(`\n版本: ${version}`);
   console.log(`下载地址: ${url}`);
   
@@ -194,6 +191,20 @@ async function downloadChrome() {
   
   // 删除压缩包
   fs.unlinkSync(tempFile);
+  
+  // 修正目录结构：解压后是chrome-win64/chrome.exe，需要重命名为chrome/chrome.exe
+  const extractedDir = path.join(CHROME_DIR, `chrome-${platformPattern}`);
+  const targetDir = path.join(CHROME_DIR, 'chrome');
+  
+  if (fs.existsSync(extractedDir) && extractedDir !== targetDir) {
+    if (fs.existsSync(targetDir)) {
+      // 删除旧的chrome目录
+      execSync(`rm -rf "${targetDir}"`, { stdio: 'inherit' });
+    }
+    // 重命名解压目录
+    fs.renameSync(extractedDir, targetDir);
+    console.log('✅ 目录结构已调整');
+  }
   
   // 验证
   if (fs.existsSync(chromeExe)) {

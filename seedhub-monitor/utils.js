@@ -37,6 +37,7 @@ function isBrowserRunning(port = CDP_PORT) {
 
 /**
  * 连接到浏览器（CDP）
+ * 注意：需要安装 agent-browser 模块
  */
 async function connectToBrowser(port = CDP_PORT) {
   try {
@@ -45,10 +46,15 @@ async function connectToBrowser(port = CDP_PORT) {
     console.log('✅ 已连接到浏览器');
     return browser;
   } catch (error) {
-    console.error('❌ 连接浏览器失败:', error.message);
+    if (error.code === 'MODULE_NOT_FOUND') {
+      console.error('❌ 未安装 agent-browser 模块');
+      console.log('💡 安装方法: npm install -g agent-browser');
+    } else {
+      console.error('❌ 连接浏览器失败:', error.message);
+    }
     console.log('💡 请确保浏览器已在调试模式运行:');
-    console.log('   node scripts/start-chrome.js');
-    console.log('   node scripts/start-edge.js');
+    console.log('   npm run start-chrome');
+    console.log('   npm run start-edge');
     return null;
   }
 }

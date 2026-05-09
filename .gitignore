@@ -29,3 +29,8 @@ temp/
 
 # 依赖
 node_modules/
+
+# CodeArts工具目录（敏感信息）
+.arts/
+.workbuddy/
+.codeartsdoer/

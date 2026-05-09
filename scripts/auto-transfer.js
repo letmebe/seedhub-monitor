@@ -57,11 +57,15 @@ async function autoTransfer(options = {}) {
     return;
   }
   
-  const browser = await utils.connectToBrowser();
-  if (!browser) {
+  // 检查浏览器是否运行
+  if (!utils.isBrowserRunning()) {
+    console.error('\n❌ 浏览器未在调试模式运行');
+    console.log('💡 请先启动浏览器: npm run start-chrome');
     db.closeDatabase();
     return;
   }
+  
+  console.log('✅ 浏览器已在调试模式运行');
   
   console.log(`\n🚀 开始转存...\n`);
   

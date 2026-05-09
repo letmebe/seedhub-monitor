@@ -47,10 +47,14 @@ npm run start-edge
 ```bash
 # 启动浏览器
 npm run start-chrome  # 或 npm run start-edge
-
-# 在打开的浏览器窗口中登录 pan.baidu.com
-# 登录后关闭窗口即可，浏览器保持调试模式运行
 ```
+
+启动后，浏览器会自动打开。在浏览器窗口中：
+
+1. 访问 `https://pan.baidu.com`
+2. 使用百度账号登录
+3. 登录成功后关闭浏览器窗口
+4. 浏览器会保持在后台运行（调试模式）
 
 **重要提示**：
 - ✅ 仅登录百度网盘

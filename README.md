@@ -10,6 +10,7 @@
 - ✅ 智能链接更新检测
 - ✅ 交互式选择转存
 - ✅ 百度网盘自动转存
+- ✅ 便携版浏览器支持
 
 ## 快速开始
 
@@ -21,9 +22,30 @@ npm install
 npm install -g agent-browser
 ```
 
-### 2. 启动调试模式
+### 2. 准备浏览器（推荐便携版）
+
+**方式A：使用便携版Chromium（推荐）**
+```bash
+# 自动下载便携版浏览器
+npm run download-chrome
+
+# 或手动检查
+npm run check-chrome
+```
+
+**方式B：使用系统Edge（备选）**
+```bash
+# 使用系统安装的Edge
+node start-edge.js
+```
+
+### 3. 启动调试模式
 
 ```bash
+# 使用便携版Chromium（推荐）
+node start-chrome.js
+
+# 或使用系统Edge
 node start-edge.js
 ```
 

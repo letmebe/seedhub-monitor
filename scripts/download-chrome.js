@@ -36,32 +36,21 @@ function getPlatformInfo() {
 }
 
 async function fetchJSON(url) {
-  process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-  
   return new Promise((resolve, reject) => {
-    const client = url.startsWith('https') ? https : http;
-    
-    const req = client.get(url, (res) => {
-      let data = '';
-      res.on('data', chunk => data += chunk);
-      res.on('end', () => {
-        try {
-          const json = JSON.parse(data);
-          resolve(json);
-        } catch (e) {
-          reject(new Error(`JSON解析失败: ${e.message}`));
-        }
+    // Windows系统可能遇到SSL证书吊销检查问题
+    // 使用curl -k参数绕过SSL验证
+    try {
+      const result = execSync(`curl -k -s "${url}"`, {
+        timeout: 30000,
+        encoding: 'utf8',
+        maxBuffer: 50 * 1024 * 1024 // 50MB
       });
-    });
-    
-    req.on('error', (e) => {
+      
+      const json = JSON.parse(result);
+      resolve(json);
+    } catch (e) {
       reject(new Error(`请求失败: ${e.message}`));
-    });
-    
-    req.setTimeout(30000, () => {
-      req.destroy();
-      reject(new Error('请求超时'));
-    });
+    }
   });
 }
 
@@ -76,13 +65,13 @@ function getPlatformPattern() {
 }
 
 async function getLatestVersion() {
-  console.log('准备下载便携版Chromium...');
+  console.log('获取最新版本信息...');
   
   const platformPattern = getPlatformPattern();
   console.log(`平台: ${platformPattern} (arch: ${ARCH})`);
   
-  // 使用已知稳定版本
-  const knownVersions = {
+  // 备用已知版本
+  const fallbackVersions = {
     'win64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/win64/chrome-win64.zip' },
     'win32': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/win32/chrome-win32.zip' },
     'mac-x64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/mac-x64/chrome-mac-x64.zip' },
@@ -90,13 +79,44 @@ async function getLatestVersion() {
     'linux64': { version: '148.0.7778.96', url: 'https://storage.googleapis.com/chrome-for-testing-public/148.0.7778.96/linux64/chrome-linux64.zip' }
   };
   
-  const versionInfo = knownVersions[platformPattern];
-  if (!versionInfo) {
-    throw new Error(`不支持的平台: ${platformPattern}`);
+  try {
+    const url = 'https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json';
+    const data = await fetchJSON(url);
+    
+    console.log(`找到 ${data.versions.length} 个版本`);
+    
+    // 查找最新版本
+    for (let i = data.versions.length - 1; i >= 0; i--) {
+      const version = data.versions[i];
+      const downloads = version.downloads?.chrome;
+      
+      if (downloads) {
+        const download = downloads.find(d => d.platform === platformPattern);
+        
+        if (download) {
+          console.log(`✅ 找到最新版本: ${version.version}`);
+          return {
+            version: version.version,
+            url: download.url,
+            platformPattern
+          };
+        }
+      }
+    }
+    
+    throw new Error(`未找到平台 ${platformPattern} 的下载版本`);
+  } catch (err) {
+    console.log(`⚠️  API访问失败: ${err.message}`);
+    console.log('使用备用版本...');
+    
+    const fallback = fallbackVersions[platformPattern];
+    if (!fallback) {
+      throw new Error(`不支持的平台: ${platformPattern}`);
+    }
+    
+    console.log(`版本: ${fallback.version}`);
+    return { ...fallback, platformPattern };
   }
-  
-  console.log(`版本: ${versionInfo.version}`);
-  return { ...versionInfo, platformPattern };
 }
 
 function downloadFile(url, dest) {

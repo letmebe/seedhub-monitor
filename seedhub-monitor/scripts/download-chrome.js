@@ -38,17 +38,28 @@ function getPlatformInfo() {
 async function fetchJSON(url) {
   return new Promise((resolve, reject) => {
     const client = url.startsWith('https') ? https : http;
-    client.get(url, (res) => {
+    
+    const req = client.get(url, (res) => {
       let data = '';
       res.on('data', chunk => data += chunk);
       res.on('end', () => {
         try {
-          resolve(JSON.parse(data));
+          const json = JSON.parse(data);
+          resolve(json);
         } catch (e) {
-          reject(e);
+          reject(new Error(`JSON解析失败: ${e.message}`));
         }
       });
-    }).on('error', reject);
+    });
+    
+    req.on('error', (e) => {
+      reject(new Error(`请求失败: ${e.message}`));
+    });
+    
+    req.setTimeout(30000, () => {
+      req.destroy();
+      reject(new Error('请求超时'));
+    });
   });
 }
 
@@ -58,7 +69,15 @@ async function getLatestVersion() {
   const url = 'https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json';
   const data = await fetchJSON(url);
   
+  console.log(`找到 ${data.versions.length} 个版本`);
+  
   const { platform, arch } = getPlatformInfo();
+  
+  // 构建匹配的平台字符串
+  const platformPattern = PLATFORM === 'win32' ? 'win' : 
+                          PLATFORM === 'darwin' ? 'mac' : 'linux';
+  
+  console.log(`查找平台: ${platformPattern}`);
   
   // 查找最新稳定版本
   for (let i = data.versions.length - 1; i >= 0; i--) {
@@ -67,11 +86,11 @@ async function getLatestVersion() {
     
     if (downloads) {
       const download = downloads.find(d => 
-        d.platform === platform && 
-        (arch === 'x64' || d.platform.includes(arch))
+        d.platform.includes(platformPattern)
       );
       
       if (download) {
+        console.log(`匹配成功: 版本 ${version.version}, 平台 ${download.platform}`);
         return {
           version: version.version,
           url: download.url
@@ -80,7 +99,7 @@ async function getLatestVersion() {
     }
   }
   
-  throw new Error('未找到合适的下载版本');
+  throw new Error(`未找到平台 ${platformPattern} 的下载版本`);
 }
 
 function downloadFile(url, dest) {

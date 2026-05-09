@@ -1,0 +1,37 @@
+# 依赖
+node_modules/
+package-lock.json
+
+# 便携版浏览器（体积大）
+chrome/
+
+# 浏览器配置和数据
+chrome-profile/
+edge-debug-profile/
+
+# 运行结果
+results/*.json
+!results/.gitkeep
+
+# 临时文件
+temp/
+*.tmp
+*.log
+
+# 数据库（包含个人数据）
+*.db
+*.db-journal
+
+# IDE配置
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 系统文件
+.DS_Store
+Thumbs.db
+
+# 敏感信息
+.env
+.env.local

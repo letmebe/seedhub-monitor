@@ -13,7 +13,9 @@
     "auto-transfer": "node auto-transfer.js",
     "migrate": "node migrate-json-to-db.js",
     "status": "node status.js",
-    "test": "node test_transfer_fixed.js"
+    "test": "node test_transfer_fixed.js",
+    "download-chrome": "node scripts/download-chrome.js",
+    "check-chrome": "node scripts/check-chrome.js"
   },
   "keywords": [
     "seedhub",

@@ -6,8 +6,10 @@ results/*.json
 # 数据库文件
 *.db
 
-# Edge调试模式用户数据
+# 浏览器相关
 edge-debug-profile/
+chrome/
+chrome-profile/
 
 # 系统文件
 .DS_Store

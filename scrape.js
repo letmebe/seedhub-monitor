@@ -18,23 +18,23 @@
  * node scrape.js --loop --max-movies 5  # 定时运行，每次处理 5 部
  */
 
-const { execSync, spawn } = require('child_process');
+const { execSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const db = require('./db');
+const browser = require('./browser-manager');
 
 // ============ 命令行参数（模块级，供 scrape() 读取） ============
 const args = process.argv.slice(2);
 
 // ============ 配置 ============
-const CDP_PORT = 9222;
+const CDP_PORT = browser.CDP_PORT;
 const TARGET_URL = 'https://www.seedhub.cc/categories/1/movies/';
 const TARGET_PAN = '百度';  // 百度 / UC / 夸克 / 天翼 / 全部
 const INTERVAL_HOURS = 0;  // 抓取间隔（小时），0 = 只运行一次
 const MAX_CHECK = 10;  // 每个电影最多检查几个中转链接
 const MAX_MOVIES = 20;  // 每次最多处理几部电影
 
-const EDGE_PATH = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe';
 const AGENT = `node "${process.env.APPDATA}\\npm\\node_modules\\agent-browser\\bin\\agent-browser.js" --cdp ${CDP_PORT}`;
 
 // ============ 工具函数 ============
@@ -67,35 +67,6 @@ function openPage(url) {
 
 function delay(ms) {
   return new Promise(r => setTimeout(r, ms));
-}
-
-function isEdgeRunning() {
-  try {
-    const result = execSync('netstat -ano | findstr ":9222"', { encoding: 'utf-8' });
-    return result.trim().length > 0;
-  } catch {
-    return false;
-  }
-}
-
-function startEdge() {
-  console.log('🚀 启动 Edge（调试模式）...');
-  try {
-    execSync('taskkill /F /IM msedge.exe', { stdio: 'ignore' });
-    execSync('timeout /t 2 /nobreak >nul', { stdio: 'ignore' });
-  } catch {}
-
-  const edge = spawn(EDGE_PATH, [
-    `--remote-debugging-port=${CDP_PORT}`,
-    '--no-first-run',
-    '--no-default-browser-check'
-  ], {
-    detached: true,
-    stdio: 'ignore'
-  });
-  edge.unref();
-
-  return delay(5000).then(() => console.log('  ✅ Edge 已启动\n'));
 }
 
 // ============ 核心逻辑 ============
@@ -273,11 +244,13 @@ async function main() {
   console.log('  SeedHub 资源监控系统');
   console.log('====================================\n');
 
-  // 检查/启动 Edge
-  if (!isEdgeRunning()) {
-    await startEdge();
-  } else {
-    console.log('✅ Edge 已在调试模式运行\n');
+  // 启动浏览器（优先便携版Chromium，回退到Edge）
+  try {
+    await browser.startBrowser({ browserType: 'chrome' });
+    console.log();
+  } catch (err) {
+    console.error('❌ 浏览器启动失败:', err.message);
+    process.exit(1);
   }
 
   // 判断运行模式

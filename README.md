@@ -1,6 +1,10 @@
 # SeedHub 影视资源监控系统
 
-自动抓取SeedHub影视资源并支持交互式转存到百度网盘。
+现在的大部分电影是不值得下载珍藏的，网盘转存后随便看看就得了。本程序运行后抓取 [SeedHub](https://www.seedhub.cc/categories/1/movies/)电影分类首页更新的资源，支持交互式选择需要转存的资源到百度网盘。
+
+因为SeedHub是部署在cloudflare上，有比较严密的反爬措施，所以需要操纵浏览器模拟人工访问，同时也需要操纵浏览器实现百度网盘的转存操作。因此程序默认使用自带的便携版Chromium浏览器，避免影响到用户自己常用的浏览器设置。同时需要全局安装agent-browser，开启远程调试端口，方便程序操纵浏览器。
+
+本程序使用 [CodeArts](https://github.com/CodeArtsDev/CodeArts) 和 GLM-5 模型开发。
 
 ## 功能特性
 
@@ -15,15 +19,49 @@
 
 ## 快速开始
 
-### 1. 安装依赖
+### 1. 安装Node.js和npm
+
+本项目需要Node.js环境（v14.0.0或更高版本）。
+
+**Windows**：
+- 访问 https://nodejs.org/
+- 下载并安装LTS版本
+- 安装后自动包含npm
+
+**或使用包管理器**：
+```bash
+# Windows (winget)
+winget install OpenJS.NodeJS.LTS
+
+# macOS (Homebrew)
+brew install node
+
+# Linux
+curl -fsSL https://deb.nodesource.com/setup_lts.x | sudo -E bash -
+sudo apt-get install -y nodejs
+```
+
+验证安装：
+```bash
+node --version  # 应显示 v18.x 或更高
+npm --version   # 应显示 9.x 或更高
+```
+
+### 2. 克隆并安装依赖
 
 ```bash
+# 克隆仓库
+git clone https://github.com/letmebe/seedhub-monitor.git
 cd seedhub-monitor
+
+# 安装项目依赖
 npm install
+
+# 安装agent-browser（全局）
 npm install -g agent-browser
 ```
 
-### 2. 准备浏览器
+### 3. 准备浏览器
 
 **方式A：便携版Chromium（推荐）**
 ```bash
@@ -40,7 +78,7 @@ npm run check-chrome
 npm run start-edge
 ```
 
-### 3. 登录百度网盘并准备转存目录
+### 4. 登录百度网盘并准备转存目录
 
 首次使用需要准备百度网盘环境：
 
@@ -74,7 +112,7 @@ npm run start-chrome  # 或 npm run start-edge
 - ❌ 不要登录微软账户，不要开启同步功能，避免干扰到你常用的浏览器配置 
 - ⚠️ 转存目录必须已存在，否则转存会失败
 
-### 4. 一键运行
+### 5. 一键运行
 
 ```bash
 # 自动抓取并转存所有新记录（目前只监控电影分类首页，一次最多20部）

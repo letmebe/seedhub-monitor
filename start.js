@@ -42,7 +42,16 @@ async function main() {
   console.log('='.repeat(60));
   
   const scrapeScript = path.join(__dirname, 'scrape.js');
-  const scrapeArgs = args.filter(arg => arg === '--loop' || arg.startsWith('--max-movies'));
+  // 保留 --loop 及 --max-movies N（含其数字参数），避免丢失
+  const scrapeArgs = [];
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--loop') {
+      scrapeArgs.push(args[i]);
+    } else if (args[i] === '--max-movies') {
+      scrapeArgs.push(args[i]);
+      if (args[i + 1] !== undefined) scrapeArgs.push(args[++i]);
+    }
+  }
   
   try {
     execSync(`node "${scrapeScript}" ${scrapeArgs.join(' ')}`, {

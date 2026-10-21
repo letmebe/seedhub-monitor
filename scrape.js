@@ -42,7 +42,7 @@ function cdpEval(jsCode) {
   const escaped = jsCode.replace(/"/g, '\\"');
   const cmd = `${AGENT} eval "${escaped}"`;
   try {
-    const result = execSync(cmd, { encoding: 'utf-8', timeout: 30000 });
+    const result = execSync(cmd, { encoding: 'utf-8', timeout: 60000 });
     const trimmed = result.trim();
     try {
       return JSON.parse(trimmed);
@@ -57,11 +57,19 @@ function cdpEval(jsCode) {
   }
 }
 
-function openPage(url) {
-  try {
-    execSync(`${AGENT} open "${url}"`, { encoding: 'utf-8', timeout: 30000 });
-  } catch (e) {
-    console.error('  [openPage] 失败:', url);
+function openPage(url, retries = 2) {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      execSync(`${AGENT} open "${url}"`, { encoding: 'utf-8', timeout: 60000 });
+      return;
+    } catch (e) {
+      if (attempt < retries) {
+        console.error(`  [openPage] 重试 ${attempt + 1}/${retries}: ${url}`);
+        delay(3000);
+      } else {
+        console.error('  [openPage] 失败:', url);
+      }
+    }
   }
 }
 
@@ -123,6 +131,10 @@ async function scrape() {
   const todo = movies.slice(0, maxMovies);
   console.log(`🔍 处理前 ${todo.length} 部电影（最多 ${maxMovies} 部）...\n`);
 
+  // 提前初始化数据库，支持逐部保存（防止中途崩溃丢数据）
+  await db.initDatabase();
+  let savedCount = 0;
+
   for (const movie of todo) {
     console.log(`  处理: ${movie.title}`);
     console.log(`    URL: ${movie.url}`);
@@ -174,13 +186,22 @@ async function scrape() {
     }
 
     if (found) {
-      results.movies.push({
+      const movieData = {
         title: movie.title,
         url: movie.url,
         panType: found.panType,
         panLink: found.panLink,
         extractCode: found.extractCode
-      });
+      };
+      results.movies.push(movieData);
+      // 逐部保存到数据库（防止中途崩溃丢数据）
+      try {
+        db.upsertMovie(movieData);
+        savedCount++;
+        console.log(`    💾 已保存到数据库 (${savedCount})`);
+      } catch (e) {
+        console.log(`    ⚠️ 保存失败: ${e.message}`);
+      }
     } else {
       console.log(`    ❌ 未找到 ${TARGET_PAN}\n`);
       results.movies.push({ title: movie.title, url: movie.url, status: 'not-found' });
@@ -198,25 +219,10 @@ async function scrape() {
   fs.writeFileSync(outFile, JSON.stringify(results, null, 2), 'utf-8');
   console.log(`  JSON: ${outFile}`);
   
-  // 保存到数据库（增量更新）
+  // 保存到数据库（已在循环中逐部保存，此处仅输出统计）
   const validMovies = results.movies.filter(m => m.panLink && m.panType);
   if (validMovies.length > 0) {
-    await db.initDatabase();
-    const upsertResults = db.upsertMovies(validMovies);
-    
-    console.log(`  数据库:`);
-    console.log(`    新增: ${upsertResults.inserted} 条`);
-    console.log(`    更新: ${upsertResults.updated} 条`);
-    console.log(`    跳过: ${upsertResults.skipped} 条`);
-    
-    if (upsertResults.updated > 0) {
-      console.log(`  链接更新详情:`);
-      upsertResults.details
-        .filter(d => d.action === 'updated')
-        .forEach(d => {
-          console.log(`    ${d.title}: 链接已更新`);
-        });
-    }
+    console.log(`  数据库: 已在抓取过程中逐部保存 ${savedCount} 条`);
     
     const stats = db.getStats();
     console.log(`  数据库统计: 总${stats.total}, 待转存${stats.pending_count}`);
@@ -244,13 +250,17 @@ async function main() {
   console.log('  SeedHub 资源监控系统');
   console.log('====================================\n');
 
-  // 启动浏览器（优先便携版Chromium，回退到Edge）
-  try {
-    await browser.startBrowser({ browserType: 'chrome' });
-    console.log();
-  } catch (err) {
-    console.error('❌ 浏览器启动失败:', err.message);
-    process.exit(1);
+  // 启动浏览器（若已运行则复用，避免重复关闭重启）
+  if (browser.isBrowserRunning()) {
+    console.log('✅ 检测到浏览器已在运行，直接复用\n');
+  } else {
+    try {
+      await browser.startBrowser({ browserType: 'chrome' });
+      console.log();
+    } catch (err) {
+      console.error('❌ 浏览器启动失败:', err.message);
+      process.exit(1);
+    }
   }
 
   // 判断运行模式

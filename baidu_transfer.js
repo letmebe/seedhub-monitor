@@ -203,7 +203,8 @@ function expandTreeNode(name) {
         if (txtEl && txtEl.textContent.trim() === name) {
           var em = node.querySelector('.plus.icon-operate');
           if (em) { em.click(); return true; }
-          return false;
+          // 节点可能已展开（无 plus 按钮），视为成功
+          return true;
         }
       }
       return false;
@@ -214,8 +215,20 @@ function expandTreeNode(name) {
 function clickFooterButton(nodeType) {
   return cdpEval(`
     (function() {
+      // 方式1: a[node-type] (旧版)
       var btn = document.querySelector('a[node-type="${nodeType}"]');
       if (btn) { btn.click(); return true; }
+      // 方式2: 在对话框及页面找文本匹配的按钮（新版 UI 按钮可能在对话框外）
+      var targetText = ${nodeType === 'confirm' ? '"确定"' : nodeType === 'cancel' ? '"取消"' : 'null'};
+      if (targetText) {
+        var btns = document.querySelectorAll('a, button, span, div');
+        for (var b = 0; b < btns.length; b++) {
+          if (btns[b].offsetParent !== null && btns[b].textContent.trim() === targetText && btns[b].children.length < 3) {
+            btns[b].click();
+            return true;
+          }
+        }
+      }
       return false;
     })()
   `);
@@ -226,12 +239,15 @@ function clickFooterButtonByText(btnText) {
   return cdpEval(`
     (function() {
       var footer = document.querySelector('.dialog-footer');
-      if (!footer) return false;
-      var links = footer.querySelectorAll('a');
-      for (var i = 0; i < links.length; i++) {
-        if (links[i].textContent.trim() === "${textEscaped}") {
-          links[i].click();
-          return true;
+      var dialog = document.querySelector('.dialog-fileTreeDialog');
+      var searchAreas = [footer, dialog].filter(Boolean);
+      for (var a = 0; a < searchAreas.length; a++) {
+        var btns = searchAreas[a].querySelectorAll('a, button, span, div');
+        for (var b = 0; b < btns.length; b++) {
+          if (btns[b].offsetParent !== null && btns[b].textContent.trim() === "${textEscaped}" && btns[b].children.length < 3) {
+            btns[b].click();
+            return true;
+          }
         }
       }
       return false;
@@ -244,7 +260,9 @@ function clickFooterButtonByText(btnText) {
 async function handleDirectoryDialog(targetPath) {
   console.log(`  📂 目标路径: ${targetPath}`);
   await waitForElement('.dialog-fileTreeDialog', 5000);
-  await delay(800);
+  // 等待目录树节点加载完成，避免树未渲染就操作
+  await waitForElement('.treeview-node', 5000);
+  await delay(1500);
 
   const pathParts = targetPath.split('/').filter(p => p.trim());
   if (pathParts.length === 0) {
@@ -415,12 +433,49 @@ function isPathMatch(currentPath, targetPath) {
 function clickSaveToDiskBtn() {
   return cdpEval(`
     (function() {
-      var btns = document.querySelectorAll('.g-button-right');
-      for (var i = 0; i < btns.length; i++) {
-        var txt = btns[i].textContent.trim();
-        if (txt.indexOf('保存到网盘') !== -1 || txt.indexOf('保存到我的百度网盘') !== -1) {
-          btns[i].click();
-          return { success: true, text: txt };
+      var keywords = ['保存到网盘', '保存到我的百度网盘'];
+      // 方式1: 旧版 .g-button-right
+      var btns1 = document.querySelectorAll('.g-button-right');
+      for (var i = 0; i < btns1.length; i++) {
+        var txt = btns1[i].textContent.trim();
+        for (var k = 0; k < keywords.length; k++) {
+          if (txt.indexOf(keywords[k]) !== -1) {
+            btns1[i].click();
+            return { success: true, text: txt, method: 'g-button-right' };
+          }
+        }
+      }
+      // 方式2: 全页面搜索 — 优先 button/a，精确匹配
+      var tags = ['button', 'a', 'span', 'div', 'input'];
+      for (var t = 0; t < tags.length; t++) {
+        var els = document.querySelectorAll(tags[t]);
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          if (el.offsetParent === null) continue;
+          var txt = el.textContent.trim();
+          for (var k = 0; k < keywords.length; k++) {
+            if (txt === keywords[k]) {
+              el.click();
+              return { success: true, text: txt, method: 'exact:' + tags[t] };
+            }
+          }
+        }
+      }
+      // 方式3: 模糊匹配 — 找最小包含关键词的元素（无子元素包含该文本）
+      for (var t = 0; t < tags.length; t++) {
+        var els = document.querySelectorAll(tags[t]);
+        for (var i = 0; i < els.length; i++) {
+          var el = els[i];
+          if (el.offsetParent === null) continue;
+          if (el.children.length > 1) continue;
+          var txt = el.textContent.trim();
+          if (txt.length > 15) continue;
+          for (var k = 0; k < keywords.length; k++) {
+            if (txt.indexOf(keywords[k]) !== -1) {
+              el.click();
+              return { success: true, text: txt, method: 'fuzzy:' + tags[t] };
+            }
+          }
         }
       }
       return { success: false };
@@ -475,14 +530,25 @@ async function closeSuccessDialog() {
 async function waitForSuccessDialog(timeout = 10000) {
   const start = Date.now();
   while (Date.now() - start < timeout) {
-    const visible = cdpEval(`
+    const result = cdpEval(`
       (function() {
+        // 方式1: 旧版 .after-trans-dialog
         var d = document.querySelector('.after-trans-dialog');
-        if (!d) return false;
-        return window.getComputedStyle(d).display !== 'none';
+        if (d && window.getComputedStyle(d).display !== 'none') return 'dialog';
+        // 方式2: 检测成功文本
+        var t = document.body ? document.body.innerText : '';
+        if (t.indexOf('保存成功') !== -1 || t.indexOf('转存成功') !== -1) return 'text';
+        if (t.indexOf('已存在') !== -1 && t.indexOf('文件') !== -1) return 'exists';
+        // 方式3: 新版对话框类名
+        var sels = ['.success-dialog', '.dialog-success', '.wp-dialog', '[class*="success"]'];
+        for (var i = 0; i < sels.length; i++) {
+          var el = document.querySelector(sels[i]);
+          if (el && el.offsetParent !== null && el.innerText && (el.innerText.indexOf('成功') !== -1 || el.innerText.indexOf('已存在') !== -1)) return 'new-dialog';
+        }
+        return false;
       })()
     `);
-    if (visible) return true;
+    if (result) return result;
     await delay(500);
   }
   return false;
@@ -541,23 +607,21 @@ async function ensureBaiduTab(targetUrl) {
 async function checkBaiduLogin() {
   console.log('  🔍 检测百度网盘登录状态...');
   await ensureBaiduTab('https://pan.baidu.com');
-  await delay(3000);
 
-  // 如果当前不是百度网盘页面，先导航过去
-  const currentUrl = cdpEval('window.location.href');
-  if (!currentUrl || !currentUrl.includes('pan.baidu.com')) {
-    openPage('https://pan.baidu.com');
-    await delay(4000);
-  }
+  // 总是导航到网盘主页检测登录态，避免在分享页面误判
+  // 分享页面即使未登录也能访问，且页脚含"登录/注册"文字会干扰检测
+  openPage('https://pan.baidu.com/disk/main');
+  await delay(5000);
 
   const loginStatus = cdpEval(`
     (function() {
       var url = window.location.href;
       var text = document.body ? document.body.innerText : '';
-      if (url.indexOf('passport.baidu.com') !== -1 || url.indexOf('login') !== -1) {
+      if (url.indexOf('passport.baidu.com') !== -1 || url.indexOf('/login') !== -1) {
         return { loggedIn: false, reason: '未登录，已跳转到登录页' };
       }
-      if (text.indexOf('登录') !== -1 && text.indexOf('注册') !== -1 && text.indexOf('个人中心') === -1) {
+      // 登录后的网盘主页会有"我的网盘"等标志，且不会同时出现登录+注册入口
+      if (text.indexOf('登录') !== -1 && text.indexOf('注册') !== -1 && text.indexOf('个人中心') === -1 && text.indexOf('我的网盘') === -1) {
         return { loggedIn: false, reason: '检测到登录/注册入口' };
       }
       return { loggedIn: true };
@@ -702,8 +766,8 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
     console.log(`  ✅ 文件列表已加载，检测到: ${listLoaded}`);
   } else {
     console.log('  跳过（无需提取码）');
-    await delay(3000);
-    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 10000);
+    await delay(6000);
+    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 30000);
     if (!listLoaded) {
       console.log('  ⚠️  文件列表未检测到，继续执行');
     }

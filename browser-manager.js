@@ -142,6 +142,11 @@ function findBrowserExecutable(browserType = 'chrome') {
   const PLATFORM = process.platform;
   
   if (browserType === 'chrome') {
+    // 优先：环境变量指定的浏览器路径
+    if (process.env.CHROME_PATH && fs.existsSync(process.env.CHROME_PATH)) {
+      return { path: process.env.CHROME_PATH, type: 'custom-chrome' };
+    }
+
     // 便携版Chromium
     const portableChrome = PLATFORM === 'win32'
       ? path.join(__dirname, 'chrome', 'chrome', 'chrome.exe')
@@ -203,8 +208,10 @@ async function startBrowser(options = {}) {
     await new Promise(r => setTimeout(r, 3000));
   }
   
-  // 用户数据目录
-  const userDataDir = path.join(__dirname, `${browserType}-profile`);
+  // 用户数据目录（优先使用环境变量指定的 profile，复用已登录状态）
+  const userDataDir = process.env.CHROME_PROFILE
+    ? process.env.CHROME_PROFILE
+    : path.join(__dirname, `${browserType}-profile`);
   if (!fs.existsSync(userDataDir)) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }

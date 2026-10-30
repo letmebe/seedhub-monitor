@@ -110,6 +110,71 @@ function isBrowserRunning(port = CDP_PORT) {
 }
 
 /**
+ * 检查 CDP 是否真正可响应（端口监听不代表 CDP 能响应，浏览器卡死时端口可能仍在监听）
+ * 通过 HTTP 请求 /json/version 验证
+ */
+function checkCDPHealth(port = CDP_PORT) {
+  return new Promise((resolve) => {
+    const req = net.connect(port, '127.0.0.1', () => {
+      req.write(`GET /json/version HTTP/1.1\r\nHost: localhost:${port}\r\n\r\n`);
+      let data = '';
+      req.on('data', (chunk) => {
+        data += chunk;
+        if (data.includes('\r\n\r\n')) {
+          try {
+            const body = data.split('\r\n\r\n')[1];
+            JSON.parse(body); // 能解析即健康
+            resolve(true);
+          } catch {
+            resolve(false);
+          }
+          req.destroy();
+        }
+      });
+    });
+    req.on('error', () => resolve(false));
+    req.setTimeout(5000, () => {
+      req.destroy();
+      resolve(false);
+    });
+  });
+}
+
+/**
+ * 确保浏览器健康：检查 CDP 可响应，否则自动重启浏览器
+ * 用于抓取阶段后浏览器可能崩溃/卡死的场景
+ */
+async function ensureBrowserHealthy(options = {}) {
+  const {
+    port = CDP_PORT,
+    browserType = 'chrome'
+  } = options;
+
+  const running = isBrowserRunning(port);
+  const healthy = running && await checkCDPHealth(port);
+
+  if (healthy) {
+    console.log(`✅ 浏览器健康检查通过（端口 ${port} CDP 可响应）`);
+    return true;
+  }
+
+  if (running && !healthy) {
+    console.log('⚠️  浏览器端口在监听但 CDP 无响应（可能卡死），强制关闭...');
+    killProcessOnPort(port);
+    await new Promise(r => setTimeout(r, 3000));
+  } else {
+    console.log('⚠️  浏览器未运行，自动重启...');
+  }
+
+  // 重启浏览器
+  console.log('🔄 重启浏览器...');
+  await startBrowser({ browserType, port, gracefulClose: false });
+  // 等待浏览器完全就绪
+  await new Promise(r => setTimeout(r, 3000));
+  return false;
+}
+
+/**
  * 等待端口就绪
  */
 function waitForPort(port = CDP_PORT, timeout = 20000) {
@@ -272,6 +337,8 @@ module.exports = {
   closeBrowserGracefully,
   killProcessOnPort,
   isBrowserRunning,
+  checkCDPHealth,
+  ensureBrowserHealthy,
   waitForPort,
   findBrowserExecutable
 };

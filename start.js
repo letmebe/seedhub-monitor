@@ -75,6 +75,12 @@ async function main() {
   console.log('\n📍 Step 3: 自动转存');
   console.log('='.repeat(60));
 
+  // 抓取阶段可能耗尽浏览器资源导致崩溃/卡死，转存前检查浏览器健康状态
+  // 若 CDP 无响应则自动重启浏览器，保证转存阶段可正常连接
+  console.log('🩺 检查浏览器健康状态...');
+  await browser.ensureBrowserHealthy({ browserType: 'chrome' });
+  console.log();
+
   await db.initDatabase();
   const stats = db.getStats();
   

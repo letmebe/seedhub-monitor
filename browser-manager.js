@@ -201,6 +201,31 @@ function waitForPort(port = CDP_PORT, timeout = 20000) {
 }
 
 /**
+ * 标记上次退出为正常退出，避免 Chrome 启动时显示"恢复页面"崩溃提示栏
+ * Chrome 根据 Preferences 文件中 profile.exit_type 字段判断：
+ *   "Crashed" / "Abnormal" → 显示恢复提示，阻塞页面操作
+ *   "Normal"                → 正常启动，无提示
+ */
+function markCleanExit(userDataDir) {
+  try {
+    const prefPath = path.join(userDataDir, 'Default', 'Preferences');
+    if (!fs.existsSync(prefPath)) return;
+    const raw = fs.readFileSync(prefPath, 'utf8');
+    const prefs = JSON.parse(raw);
+    if (!prefs.profile) prefs.profile = {};
+    // 仅在需要修改时写入，避免无谓的文件改动
+    if (prefs.profile.exit_type !== 'Normal') {
+      prefs.profile.exit_type = 'Normal';
+      fs.writeFileSync(prefPath, JSON.stringify(prefs), 'utf8');
+      console.log('  已重置 exit_type=Normal（避免崩溃恢复提示）');
+    }
+  } catch (e) {
+    // 解析/写入失败不阻断启动，仅记录
+    console.log(`  ⚠️ 重置 exit_type 跳过: ${e.message}`);
+  }
+}
+
+/**
  * 查找浏览器可执行文件
  */
 function findBrowserExecutable(browserType = 'chrome') {
@@ -281,6 +306,9 @@ async function startBrowser(options = {}) {
     fs.mkdirSync(userDataDir, { recursive: true });
   }
   
+  // 重置 exit_type，避免上次崩溃后启动时弹出"恢复页面"提示栏阻塞操作
+  markCleanExit(userDataDir);
+  
   console.log('启动浏览器...');
   
   const browser = spawn(browserInfo.path, [
@@ -288,7 +316,9 @@ async function startBrowser(options = {}) {
     `--user-data-dir=${userDataDir}`,
     '--no-first-run',
     '--no-default-browser-check',
-    '--disable-blink-features=AutomationControlled'
+    '--disable-blink-features=AutomationControlled',
+    '--disable-session-crashed-bubble',
+    '--disable-features=InfiniteSessionRestore'
   ], {
     detached: true,
     stdio: 'ignore',

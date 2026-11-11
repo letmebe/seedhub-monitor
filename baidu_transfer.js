@@ -128,6 +128,57 @@ async function waitForText(textList, timeout = 10000) {
   return null;
 }
 
+/**
+ * 等待分享页面就绪，返回真实状态：
+ *   'code' - 需要提取码（出现提取码输入框）
+ *   'list' - 文件列表已渲染（出现保存路径/保存到网盘）
+ *   null   - 超时
+ *
+ * 网络慢时页面需要十几秒才渲染，若固定等待后直接判断"没有提取码输入框"，
+ * 会把仍在加载的提取码页面误判为"无需提取码"，导致后续步骤全部失败。
+ */
+async function waitForShareReady(timeout = 25000) {
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const state = cdpEval(`
+      (function() {
+        if (document.querySelector('input[placeholder*="提取码"], input[placeholder*="访问码"]')) return 'code';
+        if (document.querySelector('.bottom-save-path, .save-path')) return 'list';
+        var t = document.body ? document.body.innerText : '';
+        if (t.indexOf('保存到网盘') !== -1 || t.indexOf('文件名') !== -1) return 'list';
+        return '';
+      })()
+    `);
+    if (state === 'code' || state === 'list') return state;
+    await delay(1000);
+  }
+  return null;
+}
+
+/**
+ * 等待目录树中出现指定名称的节点（目录树为异步加载，固定延时不可靠）
+ */
+async function waitForTreeNode(name, timeout = 15000) {
+  const nameEscaped = name.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  const start = Date.now();
+  while (Date.now() - start < timeout) {
+    const exists = cdpEval(`
+      (function() {
+        var name = "${nameEscaped}";
+        var nodes = document.querySelectorAll('.treeview-node');
+        for (var i = 0; i < nodes.length; i++) {
+          var txtEl = nodes[i].querySelector('.treeview-txt');
+          if (txtEl && txtEl.textContent.trim() === name) return true;
+        }
+        return false;
+      })()
+    `);
+    if (exists) return true;
+    await delay(800);
+  }
+  return false;
+}
+
 // ============ 交互工具 ============
 
 function clickByText(textPatterns, tagNames = ['a', 'button', 'span', 'div']) {
@@ -147,6 +198,44 @@ function clickByText(textPatterns, tagNames = ['a', 'button', 'span', 'div']) {
         }
       }
       return { success: false };
+    })()
+  `);
+}
+
+/**
+ * 点击"提取文件"按钮（新版页面按钮为无 class 的 DIV）
+ */
+function clickExtractButton() {
+  return cdpEval(`
+    (function() {
+      var elements = Array.from(document.querySelectorAll('div, span, button, a'));
+      var extractBtn = null;
+
+      for (var i = 0; i < elements.length; i++) {
+        var el = elements[i];
+        var text = el.textContent.trim();
+
+        if (text === '提取文件') {
+          var hasOnlyText = el.childNodes.length === 0 ||
+                           (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3);
+
+          if (hasOnlyText || el.tagName === 'BUTTON' || el.tagName === 'A') {
+            extractBtn = el;
+            break;
+          }
+
+          if (!extractBtn) {
+            extractBtn = el;
+          }
+        }
+      }
+
+      if (extractBtn) {
+        extractBtn.click();
+        return { success: true, text: '提取文件', tag: extractBtn.tagName, method: 'exact-match' };
+      }
+
+      return { success: false, reason: 'no-extract-button' };
     })()
   `);
 }
@@ -259,10 +348,10 @@ function clickFooterButtonByText(btnText) {
 
 async function handleDirectoryDialog(targetPath) {
   console.log(`  📂 目标路径: ${targetPath}`);
-  await waitForElement('.dialog-fileTreeDialog', 5000);
+  await waitForElement('.dialog-fileTreeDialog', 8000);
   // 等待目录树节点加载完成，避免树未渲染就操作
-  await waitForElement('.treeview-node', 5000);
-  await delay(1500);
+  await waitForElement('.treeview-node', 8000);
+  await delay(800);
 
   const pathParts = targetPath.split('/').filter(p => p.trim());
   if (pathParts.length === 0) {
@@ -277,36 +366,32 @@ async function handleDirectoryDialog(targetPath) {
   for (let i = 0; i < pathParts.length; i++) {
     const dirName = pathParts[i];
     const isLast = (i === pathParts.length - 1);
-    
+
     console.log(`  📁 ${isLast ? '选择' : '展开'}目录: ${dirName}`);
-    await delay(1000);
+
+    // 目录树按需异步加载，慢网络下固定延时会导致节点尚未出现就判定"不存在"
+    const appeared = await waitForTreeNode(dirName, i === 0 ? 20000 : 15000);
+
+    if (!appeared && isLast) {
+      // 目标目录不存在时，先尝试重新展开所有父目录（可能上次展开请求未返回）
+      console.log(`    ⚠️ 未找到 "${dirName}"，尝试展开父目录...`);
+      for (let j = 0; j < pathParts.length - 1; j++) {
+        expandTreeNode(pathParts[j]);
+      }
+      await delay(1500);
+    }
 
     if (!isLast) {
-      // 对于非最后一级，尝试展开该目录
-      const expanded = expandTreeNode(dirName);
-      if (expanded) {
-        console.log(`    ⬇️ 已展开 "${dirName}"`);
-        await delay(1500);
-      } else {
-        // 如果无法展开，尝试单击（可能会展开）
-        clickTreeNode(dirName, false);
-        await delay(1500);
+      if (!appeared) {
+        console.error(`  ❌ 未找到父目录 "${dirName}"，无法继续导航`);
+        return { success: false, error: `未找到目录 "${dirName}"` };
       }
+      expandTreeNode(dirName);
+      console.log(`    ⬇️ 已展开 "${dirName}"`);
+      await delay(1000);
     } else {
-      // 对于最后一级，直接单击选中
-      let result = clickTreeNode(dirName, false);
-      
-      if (!result || !result.clicked) {
-        // 如果没找到，可能需要先展开
-        console.log(`    ⚠️ 未找到 "${dirName}"，尝试展开父目录...`);
-        // 尝试展开所有可能的父目录
-        for (let j = 0; j < pathParts.length - 1; j++) {
-          expandTreeNode(pathParts[j]);
-        }
-        await delay(1500);
-        result = clickTreeNode(dirName, false);
-      }
-      
+      const result = clickTreeNode(dirName, false);
+
       if (result && result.clicked) {
         console.log(`    ✅ 已选中 "${dirName}"`);
         await delay(800);
@@ -330,31 +415,35 @@ async function handleDirectoryDialog(targetPath) {
 
 async function createFolderInDialog(folderName) {
   console.log(`    📝 点击"新建文件夹"...`);
-  const clicked = clickFooterButtonByText('新建文件夹');
+
+  // 目录树加载完成前底部按钮可能尚未渲染，轮询等待按钮出现
+  let clicked = false;
+  const btnStart = Date.now();
+  while (Date.now() - btnStart < 10000) {
+    clicked = clickFooterButtonByText('新建文件夹');
+    if (clicked) break;
+    await delay(500);
+  }
   if (!clicked) { console.error('    ❌ 未找到"新建文件夹"按钮'); return false; }
-  await delay(1000);
+  await delay(800);
 
-  const inputResult = cdpEval(`
-    (function() {
-      var inputs = document.querySelectorAll('.dialog-body input[type="text"]');
-      for (var i = 0; i < inputs.length; i++) {
-        var setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value').set;
-        setter.call(inputs[i], "${folderName.replace(/"/g, '\\"')}");
-        inputs[i].dispatchEvent(new Event('input', { bubbles: true }));
-        inputs[i].dispatchEvent(new Event('change', { bubbles: true }));
-        return true;
-      }
-      return false;
-    })()
-  `);
+  // 新版输入框为 .shareFolderInput，旧版为 .dialog-body 内的文本框
+  const inputFound = (await waitForElement('.shareFolderInput', 5000)) ||
+                     (await waitForElement('.dialog-body input[type="text"]', 2000));
+  if (!inputFound) { console.error('    ❌ 无法找到文件夹名称输入框'); return false; }
 
+  const inputResult = setInputValue('.shareFolderInput, .dialog-body input[type="text"]', folderName);
   if (!inputResult) { console.error('    ❌ 无法输入文件夹名称'); return false; }
   console.log(`    ✅ 已输入: ${folderName}`);
   await delay(500);
 
   const confirmed = clickFooterButton('confirm');
   if (!confirmed) clickFooterButtonByText('确定');
-  await delay(2000);
+  await delay(2500);
+
+  // 确认文件夹确实出现在目录树中
+  const created = await waitForTreeNode(folderName, 8000);
+  if (!created) { console.error(`    ❌ 创建文件夹 "${folderName}" 后未在目录树中找到`); return false; }
   console.log(`    ✅ 已创建文件夹 "${folderName}"`);
   return true;
 }
@@ -695,82 +784,61 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
 
   // Step 2: 处理提取码
   console.log('\n[2/5] 🔑 检查提取码...');
-  const needCode = cdpEval(`!!document.querySelector('input[placeholder*="提取码"], input[placeholder*="访问码"]')`);
+  // 轮询判断页面真实状态：网络慢时页面仍在加载，直接查询输入框会把"加载中"误判为"无需提取码"
+  const pageState = await waitForShareReady(25000);
+  console.log(`  页面状态: ${pageState === 'code' ? '需要提取码' : pageState === 'list' ? '文件列表已就绪' : '未知'}`);
 
-  if (needCode) {
+  if (pageState === 'code') {
     if (!extractCode) { console.error('  ❌ 需要提取码但未提供'); return { success: false, error: '需要提取码' }; }
     console.log(`  输入提取码: ${extractCode}`);
-    
+
     const inputSelector = 'input[placeholder*="提取码"], input[placeholder*="访问码"]';
-    
+    await waitForElement(inputSelector, 5000);
     setInputValue(inputSelector, extractCode);
     await delay(1000);
-    
+
     console.log('  查找提取按钮...');
-    const buttonTexts = cdpEval(`Array.from(document.querySelectorAll('button, a, span, div')).map(el => ({text: el.textContent.trim().substring(0, 20), tag: el.tagName})).filter(o => o.text.length > 0 && o.text.length < 20).slice(0, 15)`);
-    console.log('  页面元素:', buttonTexts);
-    
-    const clickResult = cdpEval(`
-      (function() {
-        var elements = Array.from(document.querySelectorAll('div, span, button, a'));
-        var extractBtn = null;
-        
-        for (var i = 0; i < elements.length; i++) {
-          var el = elements[i];
-          var text = el.textContent.trim();
-          
-          if (text === '提取文件') {
-            var hasOnlyText = el.childNodes.length === 0 || 
-                             (el.childNodes.length === 1 && el.childNodes[0].nodeType === 3);
-            
-            if (hasOnlyText || el.tagName === 'BUTTON' || el.tagName === 'A') {
-              extractBtn = el;
-              break;
-            }
-            
-            if (!extractBtn) {
-              extractBtn = el;
-            }
-          }
-        }
-        
-        if (extractBtn) {
-          extractBtn.click();
-          return { success: true, text: '提取文件', tag: extractBtn.tagName, method: 'exact-match' };
-        }
-        
-        return { success: false, reason: 'no-extract-button' };
-      })()
-    `);
+    const clickResult = clickExtractButton();
     console.log('  提取按钮点击结果:', clickResult);
-    
+
     if (!clickResult || !clickResult.success) {
       console.log('  精确匹配失败，尝试模糊匹配...');
       const clicked = clickByText(['提取文件', '确定', '确认', '进入', '提取'], ['button', 'a', 'span', 'div']);
       console.log('  模糊匹配结果:', clicked);
     }
-    
-    await delay(4000);
-    
+
+    await delay(2000);
     console.log('  ✅ 提取码已提交');
     console.log('  ⏳ 等待文件列表加载...');
-    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 30000);
-    if (!listLoaded) { 
+    let listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 30000);
+
+    if (!listLoaded) {
+      // 页面卡顿或首次点击未生效时，重新提交一次提取码
+      console.log('  ⚠️ 文件列表未加载，重试提交提取码...');
+      setInputValue(inputSelector, extractCode);
+      await delay(800);
+      clickExtractButton();
+      listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 20000);
+    }
+
+    if (!listLoaded) {
       console.error('  ❌ 文件列表加载超时');
       const pageText = cdpEval('document.body ? document.body.innerText.substring(0, 300) : ""');
       console.log('  当前页面文本:', pageText);
       const currentUrl = cdpEval('window.location.href');
       console.log('  当前URL:', currentUrl);
-      return { success: false, error: '文件列表加载失败' }; 
+      return { success: false, error: '文件列表加载失败' };
     }
     console.log(`  ✅ 文件列表已加载，检测到: ${listLoaded}`);
-  } else {
+  } else if (pageState === 'list') {
     console.log('  跳过（无需提取码）');
-    await delay(6000);
-    const listLoaded = await waitForText(['保存到网盘', '文件名', '大小', '保存'], 30000);
-    if (!listLoaded) {
-      console.log('  ⚠️  文件列表未检测到，继续执行');
-    }
+  } else {
+    const pageText = cdpEval('document.body ? document.body.innerText.substring(0, 200) : ""');
+    console.error('  ❌ 分享页面加载超时');
+    console.log('  当前页面文本:', pageText);
+    const currentUrl = cdpEval('window.location.href');
+    console.log('  当前URL:', currentUrl);
+    return { success: false, error: '分享页面加载超时' };
   }
 
   // 检查链接有效性
@@ -781,7 +849,12 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
 
   // Step 3: 检查当前保存路径，决定是否需要修改
   console.log('\n[3/5] 📂 检查当前保存路径...');
-  const currentSavePath = getCurrentSavePath();
+  let currentSavePath = getCurrentSavePath();
+  if (!currentSavePath) {
+    // .save-path 延迟渲染，网络慢时需等待，否则会误判为"路径不匹配"而打开目录对话框
+    await waitForElement('.save-path', 8000);
+    currentSavePath = getCurrentSavePath();
+  }
   console.log(`  当前路径: ${currentSavePath || '(无法获取)'}`);
   console.log(`  目标路径: ${targetPath}`);
   
@@ -800,10 +873,28 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
   } else {
     // 路径不匹配，需要打开目录树选择路径
     console.log('  ⚠️ 路径不匹配，打开目录选择对话框...');
-    const dialogOpened = openDirectoryDialog();
+    let dialogOpened = openDirectoryDialog();
     if (!dialogOpened) {
-      console.error('  ❌ 未找到 .bottom-save-path 元素');
-      return { success: false, error: '找不到路径选择区域' };
+      // 新版分享页（工具栏样式）没有 .bottom-save-path，
+      // 点击"保存到网盘"会先弹出目录选择对话框
+      console.log('  ℹ️ 未找到 .bottom-save-path，尝试通过"保存到网盘"打开目录对话框...');
+      const saveResult = clickSaveToDiskBtn();
+      if (!saveResult || !saveResult.success) {
+        console.error('  ❌ 未找到"保存到网盘"按钮');
+        return { success: false, error: '找不到路径选择区域' };
+      }
+      console.log(`  ✅ 已点击: "${saveResult.text}"`);
+      dialogOpened = await waitForElement('.dialog-fileTreeDialog', 8000);
+      if (!dialogOpened) {
+        // 部分页面可能跳过目录框直接保存
+        const directSaved = await waitForSuccessDialog(10000);
+        if (directSaved) {
+          console.log(`  ✅ 保存成功（未弹目录框，检测到: ${directSaved}）`);
+          return { success: true, path: targetPath };
+        }
+        console.error('  ❌ 未找到路径选择区域');
+        return { success: false, error: '找不到路径选择区域' };
+      }
     }
     console.log('  ✅ 已打开目录选择对话框');
     await delay(1500);
@@ -820,7 +911,15 @@ async function transferBaiduShare(shareUrl, extractCode, targetPath, options = {
 
   // Step 4: 等待保存结果
   console.log('\n[4/5] 🔄 等待保存结果...');
-  const successVisible = await waitForSuccessDialog(10000);
+  let successVisible = await waitForSuccessDialog(20000);
+  if (!successVisible) {
+    // 慢网络下首次点击可能未生效，重试一次"保存到网盘"
+    console.log('  ⚠️ 未检测到保存结果，重试点击"保存到网盘"...');
+    const retryClick = clickSaveToDiskBtn();
+    if (retryClick && retryClick.success) {
+      successVisible = await waitForSuccessDialog(15000);
+    }
+  }
   if (!successVisible) {
     const pageCheck = cdpEval(`(function(){ var t=document.body?document.body.innerText:''; if(t.indexOf('保存成功')!==-1||t.indexOf('转存成功')!==-1)return'success'; if(t.indexOf('已存在')!==-1)return'exists'; return'unknown'; })()`);
     if (pageCheck === 'success' || pageCheck === 'exists') {
